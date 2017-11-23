@@ -245,6 +245,9 @@ EOF
       get_ldap_base_dn
       sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/02-security.ldif
 
+      # adapt collection config file
+      sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/06-collection.ldif
+
       # process config files (*.ldif) in bootstrap directory (do no process files in subdirectories)
       log-helper info "Add image bootstrap ldif..."
       for f in $(find $LDIF_DIR -mindepth 1 -maxdepth 1 -type f -name \*.ldif  | sort); do
