@@ -135,6 +135,8 @@ EOF
 
     rm ${SCHEMA_DIR}/rfc2307bis.*
 
+    # copy kerberos config
+    [[ -f /etc/krb5/krb5.conf ]] && cp /etc/krb5/krb5.conf /etc/krb5.conf
   #
   # Error: the database directory (/var/lib/ldap) is empty but not the config directory (/etc/ldap/slapd.d)
   #

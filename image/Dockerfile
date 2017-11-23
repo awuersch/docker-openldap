@@ -28,6 +28,11 @@ RUN apt-get -y update \
        openssl \
        slapd \
        ntp \
+       krb5-config \
+       krb5-user \
+       krb5-k5tls \
+       krb5-pkinit \
+       kstart \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
