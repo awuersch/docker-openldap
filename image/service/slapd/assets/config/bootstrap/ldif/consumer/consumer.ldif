@@ -1,0 +1,18 @@
+#Load the syncprov and deref modules.
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: syncprov
+-
+add: olcModuleLoad
+olcModuleLoad: deref
+
+# Add delta syncrepl from consumer
+# refer updates to provider host
+dn: olcDatabase={1}{{ LDAP_BACKEND }},cn=config
+changetype: modify
+add: olcSyncRepl
+olcSyncRepl: {{ LDAP_CONSUMER_DB_SYNCPROV }}
+-
+add: olcUpdateRef
+olcUpdateRef: {{ LDAP_PROVIDER_HOST }}

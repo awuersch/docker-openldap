@@ -35,6 +35,7 @@ LDAP_TLS_VERIFY_CLIENT: demand
 
 # Replication
 LDAP_REPLICATION: false
+
 # variables $LDAP_BASE_DN, $LDAP_ADMIN_PASSWORD, $LDAP_CONFIG_PASSWORD
 # are automaticaly replaced at run time
 
@@ -44,8 +45,23 @@ LDAP_REPLICATION: false
 LDAP_REPLICATION_CONFIG_SYNCPROV: binddn="cn=admin,cn=config" bindmethod=simple credentials=$LDAP_CONFIG_PASSWORD searchbase="cn=config" type=refreshAndPersist retry="60 +" timeout=1 starttls=critical
 LDAP_REPLICATION_DB_SYNCPROV: binddn="cn=admin,$LDAP_BASE_DN" bindmethod=simple credentials=$LDAP_ADMIN_PASSWORD searchbase="$LDAP_BASE_DN" type=refreshAndPersist interval=00:00:00:10 retry="60 +" timeout=1 starttls=critical
 LDAP_REPLICATION_HOSTS:
-  - ldap://ldap.example.org # The order must be the same on all ldap servers
-  - ldap://ldap2.example.org
+  - ldap://ldap.$LDAP_DOMAIN # The order must be the same on all ldap servers
+  - ldap://ldap2.$LDAP_DOMAIN
+
+# Provider support
+LDAP_PROVIDER: false
+
+# Consumer support
+LDAP_CONSUMER: false
+
+LDAP_PROVIDER_HOST: ldap://ldap.$LDAP_DOMAIN
+LDAP_SYNCREPL_USER: $LDAP_READONLY_USER_USERNAME
+LDAP_SYNCREPL_PASSWORD: $LDAP_READONLY_USER_PASSWORD
+LDAP_RID: 0
+
+# binddn="cn=$LDAP_SYNCREPL_USER,$LDAP_BASE_DN"
+# credentials="$LDAP_SYNCREPL_PASSWORD"
+LDAP_CONSUMER_DB_SYNCPROV: rid=$LDAP_RID provider=$LDAP_PROVIDER_HOST binddn="cn=$LDAP_SYNCREPL_USER,$LDAP_BASE_DN" bindmethod=simple credentials="$LDAP_SYNCREPL_PASSWORD" searchbase="$LDAP_BASE_DN" logbase="cn=accesslog" logfilter="(&(objectClass=auditWriteObject)(reqResult=0))" schemachecking=on type=refreshAndPersist retry="60 +" syncdata=accesslog starttls=critical tls_reqcert=demand
 
 # Do not change the ldap config
 # - If set to true with an existing database, config will remain unchanged. Image tls and replication config will not be run.
