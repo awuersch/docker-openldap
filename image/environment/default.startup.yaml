@@ -47,6 +47,7 @@ LDAP_REPLICATION_DB_SYNCPROV: binddn="cn=admin,$LDAP_BASE_DN" bindmethod=simple 
 LDAP_REPLICATION_HOSTS:
   - ldap://ldap.$LDAP_DOMAIN # The order must be the same on all ldap servers
   - ldap://ldap2.$LDAP_DOMAIN
+  - ldap://ldap3.$LDAP_DOMAIN
 
 # Provider support
 LDAP_PROVIDER: false

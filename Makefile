@@ -1,10 +1,10 @@
-NAME = osixia/openldap
+NAME = awuersch/openldap
 VERSION = 1.2.0
 
 .PHONY: build build-nocache test tag-latest push push-latest release git-tag-version
 
 build:
-	docker build -t $(NAME):$(VERSION) --rm image
+	docker build --build-arg LDAP_OPENLDAP_GID=1000 --build-arg LDAP_OPENLDAP_UID=1000 -t $(NAME):$(VERSION)-tony --rm image
 
 build-nocache:
 	docker build -t $(NAME):$(VERSION) --no-cache --rm image

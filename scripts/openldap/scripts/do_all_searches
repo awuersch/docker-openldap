@@ -1,0 +1,9 @@
+#!/bin/bash -e
+
+for n in 1 2 3 4
+do
+  for h in ldap ldap2 replica replica2
+  do
+    ./search.$n $h > $h.$n.out
+  done
+done
