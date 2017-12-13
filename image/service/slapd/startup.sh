@@ -136,7 +136,14 @@ EOF
     rm ${SCHEMA_DIR}/rfc2307bis.*
 
     # copy kerberos config
-    [[ -f /etc/krb5/krb5.conf ]] && cp /etc/krb5/krb5.conf /etc/krb5.conf
+    for suffix in conf keytab
+    do
+      f=krb5.$suffix
+      [[ -f /etc/krb5/$f ]] && cp /etc/krb5/$f /etc/$f
+    done
+
+    # fix permissions on keytab
+    chown openldap:openldap /etc/krb5.keytab
   #
   # Error: the database directory (/var/lib/ldap) is empty but not the config directory (/etc/ldap/slapd.d)
   #
@@ -249,6 +256,11 @@ EOF
 
       # adapt collection config file
       sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/06-collection.ldif
+
+      # adapt sasl config file
+      sed -i "s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g" ${LDIF_DIR}/07-sasl.ldif
+      sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/07-sasl.ldif
+      sed -i "s|{{ LDAP_REALM }}|${LDAP_REALM}|g" ${LDIF_DIR}/07-sasl.ldif
 
       # process config files (*.ldif) in bootstrap directory (do no process files in subdirectories)
       log-helper info "Add image bootstrap ldif..."
