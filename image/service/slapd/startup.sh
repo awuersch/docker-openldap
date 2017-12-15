@@ -23,6 +23,8 @@ FIRST_START_DONE="${CONTAINER_STATE_DIR}/slapd-first-start-done"
 WAS_STARTED_WITH_TLS="/etc/ldap/slapd.d/docker-openldap-was-started-with-tls"
 WAS_STARTED_WITH_TLS_ENFORCE="/etc/ldap/slapd.d/docker-openldap-was-started-with-tls-enforce"
 WAS_STARTED_WITH_REPLICATION="/etc/ldap/slapd.d/docker-openldap-was-started-with-replication"
+WAS_STARTED_WITH_AUTHENTICATION="/etc/ldap/slapd.d/docker-openldap-was-started-with-authentication"
+IS_LDAP_CONSUMER="/etc/ldap/slapd.d/docker-openldap-is-ldap-consumer"
 
 ASSETS_DIR="${CONTAINER_SERVICE_DIR}/slapd/assets"
 CERTS_DIR="$ASSETS_DIR/certs"
@@ -32,6 +34,7 @@ LDAP_TLS_CRT_PATH="${CERTS_DIR}/$LDAP_TLS_CRT_FILENAME"
 LDAP_TLS_KEY_PATH="${CERTS_DIR}/$LDAP_TLS_KEY_FILENAME"
 LDAP_TLS_DH_PARAM_PATH="${CERTS_DIR}/dhparam.pem"
 
+LDAP_CONFIG_ROOT_DN="cn=admin,cn=config"
 
 # CONTAINER_SERVICE_DIR and CONTAINER_STATE_DIR variables are set by
 # the baseimage run tool more info : https://github.com/osixia/docker-light-baseimage
@@ -42,20 +45,6 @@ if [ ! -e "$FIRST_START_DONE" ]; then
   #
   # Helpers
   #
-  function get_ldap_base_dn() {
-    # if LDAP_BASE_DN is empty set value from LDAP_DOMAIN
-    if [ -z "$LDAP_BASE_DN" ]; then
-      IFS='.' read -ra LDAP_BASE_DN_TABLE <<< "$LDAP_DOMAIN"
-      for i in "${LDAP_BASE_DN_TABLE[@]}"; do
-        EXT="dc=$i,"
-        LDAP_BASE_DN=$LDAP_BASE_DN$EXT
-      done
-
-      LDAP_BASE_DN=${LDAP_BASE_DN::-1}
-    fi
-
-  }
-
   function is_new_schema() {
     local COUNT=$(ldapsearch -Q -Y EXTERNAL -H ldapi:/// -b cn=schema,cn=config cn | grep -c $1)
     if [ "$COUNT" -eq 0 ]; then
@@ -65,18 +54,63 @@ if [ ! -e "$FIRST_START_DONE" ]; then
     fi
   }
 
-  function ldap_add_or_modify (){
-    local LDIF_FILE=$1
-    sed -i -e "{
-      s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
-      s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
-    }" $LDIF_FILE
-    if grep -iq changetype $LDIF_FILE ; then
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE 2>&1 | log-helper debug || ldapmodify -h localhost -p 389 -D cn=admin,$LDAP_BASE_DN -w $LDAP_ADMIN_PASSWORD -f $LDIF_FILE 2>&1 | log-helper debug
-    else
-        ldapadd -Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE |& log-helper debug || ldapadd -h localhost -p 389 -D cn=admin,$LDAP_BASE_DN -w $LDAP_ADMIN_PASSWORD -f $LDIF_FILE 2>&1 | log-helper debug
-    fi
+  function get_ldap_base_dn() {
+    # if LDAP_BASE_DN is empty set value from LDAP_DOMAIN
+    [[ -z "$LDAP_BASE_DN" ]] && {
+      IFS='.' read -ra LDAP_BASE_DN_TABLE <<< "$LDAP_DOMAIN"
+      for i in "${LDAP_BASE_DN_TABLE[@]}"; do
+        EXT="dc=$i,"
+        LDAP_BASE_DN=$LDAP_BASE_DN$EXT
+      done
+    }
   }
+
+  get_ldap_base_dn
+
+  function lhd() {
+    log-helper debug
+  }
+
+  if [[ X"$LDAP_AUTHENTICATION" == X"simple" ]] ; then
+
+    LDAP_DB_ROOT_DN="cn=admin,$LDAP_BASE_DN"
+
+    function ldap_add_or_modify() {
+      local LDIF_FILE=$1
+      local a=(-Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE)
+      local b=(-h localhost -p 389
+        -D $LDAP_DB_ROOT_DN -w $LDAP_ADMIN_PASSWORD
+	-f $LDIF_FILE)
+      sed -i -e "{
+        s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
+        s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
+      }" $LDIF_FILE
+      if grep -iq changetype $LDIF_FILE ; then
+        ldapmodify "${a[@]}" |& lhd || ldapmodify "${b[@]} |& lhd
+      else
+        ldapadd "${a[@]}" |& lhd || ldapadd "${b[@]} |& lhd
+      fi
+    }
+
+  elif [[ X"$LDAP_AUTHENTICATION" == X"sasl" ]] ; then
+
+    function ldap_add_or_modify() {
+      local LDIF_FILE=$1
+      local a=(-Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE)
+      local b=(-Y GSSAPI -Q -h localhost -p 389
+        -D $LDAP_CONFIG_ROOT_DN
+	-f $LDIF_FILE)
+      sed -i -e "{
+        s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
+      }" $LDIF_FILE
+      if grep -iq changetype $LDIF_FILE ; then
+        ldapmodify "${a[@]}" |& lhd || ldapmodify "${b[@]} |& lhd
+      else
+        ldapadd "${a[@]}" |& lhd || ldapadd "${b[@]} |& lhd
+      fi
+    }
+
+  fi
 
   BOOTSTRAP_DIR=${ASSETS_DIR}/config/bootstrap
   SCHEMA_DIR=${BOOTSTRAP_DIR}/schema
@@ -158,6 +192,16 @@ EOF
     log-helper error "Error: the config directory (/etc/ldap/slapd.d) is empty but not the database directory (/var/lib/ldap)"
     exit 1
   fi
+
+  # set authentication
+  if [[ X"$LDAP_AUTHENTICATION" != X"simple" || "X$LDAP_AUTHENTICATION" = "Xsasl" ]]; then
+    log-helper error "Error: authentication must be simple or sasl"
+    exit 1
+  else
+    echo "export LDAP_AUTHENTICATION=$LDAP_AUTHENTICATION" > $WAS_STARTED_WITH_AUTHENTICATION
+  fi
+
+  [[ X"$LDAP_CONSUMER" != X"true" ]] && touch $IS_LDAP_CONSUMER
 
   if [ "${KEEP_EXISTING_CONFIG,,}" == "true" ]; then
     log-helper info "/!\ KEEP_EXISTING_CONFIG = true configration will not be updated"
@@ -250,21 +294,64 @@ EOF
       LDAP_CONFIG_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_CONFIG_PASSWORD)
       sed -i "s|{{ LDAP_CONFIG_PASSWORD_ENCRYPTED }}|${LDAP_CONFIG_PASSWORD_ENCRYPTED}|g" ${LDIF_DIR}/01-config-password.ldif
 
-      # adapt security config file
-      get_ldap_base_dn
-      sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/02-security.ldif
+      log-helper info "Getting db base DN..."
+
+      log-helper info "Setting authentication..."
+
+      # set authentication
+
+      AUTH_DIR=$LDIF_DIR/authentication/$LDAP_AUTHENTICATION
+
+      if [[ X"$LDAP_AUTHENTICATION" != X"sasl" ]] ; then
+
+	# change database rootDN and rootPW to same as cn=admin,cn=config
+        LDIF_FILE=$AUTH_DIR/security.ldif
+        sed -i -e "{
+          s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
+          s|{{ LDAP_CONFIG_PASSWORD_ENCRYPTED }}|${LDAP_CONFIG_PASSWORD_ENCRYPTED}|g
+        }" $LDIF_FILE
+
+	# note, we use simple base DN and password for this step!
+        ldapmodify -h localhost -p 389 -D cn=admin,$LDAP_BASE_DN -w $LDAP_ADMIN_PASSWORD -f $LDIF_FILE |& log-helper debug
+
+	# now we're in SASL_ROOT_DN territory.
+        LDAP_DB_ROOT_DN="$LDAP_CONFIG_ROOT_DN"
+        LDAP_DB_ROOT_PW="$LDAP_CONFIG_PASSWORD"
+
+        # adapt sasl config file
+        LDIF_FILE=$AUTH_DIR/sasl.ldif
+        sed -i -e "{
+          s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g
+          s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
+          s|{{ LDAP_REALM }}|${LDAP_REALM}|g
+        }" $LDIF_FILE
+
+        # run sasl config file
+        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE |& log-helper debug
+
+	# now we're SASL-enabled.
+
+	# TODO: add sasl security levels (watch out! -Y EXTERNAL is used here)
+
+      elif [[ X"$LDAP_AUTHENTICATION" != X"simple" ]] ; then
+        # adapt security config file
+	LDIF_FILE=${AUTH_DIR}/security.ldif
+        sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_FILE}
+
+        # run security config file
+        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE |& log-helper debug
+
+        LDAP_DB_ROOT_DN="cn=admin,$LDAP_BASE_DN"
+
+	# now we're simple-enabled.
+      fi
 
       # adapt collection config file
       sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/06-collection.ldif
 
-      # adapt sasl config file
-      sed -i "s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g" ${LDIF_DIR}/07-sasl.ldif
-      sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/07-sasl.ldif
-      sed -i "s|{{ LDAP_REALM }}|${LDAP_REALM}|g" ${LDIF_DIR}/07-sasl.ldif
-
       # process config files (*.ldif) in bootstrap directory (do no process files in subdirectories)
       log-helper info "Add image bootstrap ldif..."
-      for f in $(find $LDIF_DIR -mindepth 1 -maxdepth 1 -type f -name \*.ldif  | sort); do
+      for f in $(ls $LDIF_DIR/*.ldif | sort); do
         log-helper debug "Processing file ${f}"
         ldap_add_or_modify "$f"
       done
@@ -280,7 +367,7 @@ EOF
 
         log-helper info "Add read only user..."
 
-	D=${LDIF_DIR}/readonly-user
+	D=${AUTH_DIR}/readonly-user
 	F=$D/readonly-user.ldif
 
         LDAP_READONLY_USER_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_READONLY_USER_PASSWORD)
@@ -291,7 +378,7 @@ EOF
 	}" $F
 
         log-helper debug "Processing file $F"
-        ldapmodify -h localhost -p 389 -D cn=admin,$LDAP_BASE_DN -w $LDAP_ADMIN_PASSWORD -f $F 2>&1 | log-helper debug
+        ldapmodify -h localhost -p 389 -D $LDAP_DB_ROOT_DN -w $LDAP_DB_ROOT_PASSWORD -f $F 2>&1 | log-helper debug
 
 	F=$D/readonly-user-acl.ldif
 
@@ -346,6 +433,8 @@ EOF
 
         # fix CONSUMER_DB_SYNCPROV to be sed-friendly
 	export LDAP_CONSUMER_DB_SYNCPROV="${LDAP_CONSUMER_DB_SYNCPROV//&/\\&}"
+
+	# TODO: fix this for SASL
 
         sed -i "{
 	  s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
