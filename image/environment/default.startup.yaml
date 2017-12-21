@@ -46,8 +46,8 @@ LDAP_AUTHENTICATION: simple
 # if you want to add replication to an existing ldap
 # adapt LDAP_REPLICATION_CONFIG_SYNCPROV and LDAP_REPLICATION_DB_SYNCPROV to your configuration
 # avoid using $LDAP_BASE_DN, $LDAP_ADMIN_PASSWORD and $LDAP_CONFIG_PASSWORD variables
-LDAP_REPLICATION_CONFIG_SYNCPROV: binddn="cn=admin,cn=config" bindmethod=simple credentials=$LDAP_CONFIG_PASSWORD searchbase="cn=config" type=refreshAndPersist retry="60 +" timeout=1 starttls=critical
-LDAP_REPLICATION_DB_SYNCPROV: binddn="cn=admin,$LDAP_BASE_DN" bindmethod=simple credentials=$LDAP_ADMIN_PASSWORD searchbase="$LDAP_BASE_DN" type=refreshAndPersist interval=00:00:00:10 retry="60 +" timeout=1 starttls=critical
+LDAP_REPLICATION_CONFIG_SYNCPROV: binddn="cn=admin,cn=config" searchbase="cn=config" type=refreshAndPersist retry="60 +" timeout=1 starttls=critical
+LDAP_REPLICATION_DB_SYNCPROV: binddn="$LDAP_DB_ROOT_DN" searchbase="$LDAP_BASE_DN" type=refreshAndPersist interval=00:00:00:10 retry="60 +" timeout=1 starttls=critical
 LDAP_REPLICATION_HOSTS:
   - ldap://ldap.$LDAP_DOMAIN # The order must be the same on all ldap servers
   - ldap://ldap2.$LDAP_DOMAIN
@@ -66,7 +66,7 @@ LDAP_RID: 0
 
 # binddn="cn=$LDAP_SYNCREPL_USER,$LDAP_BASE_DN"
 # credentials="$LDAP_SYNCREPL_PASSWORD"
-LDAP_CONSUMER_DB_SYNCPROV: rid=$LDAP_RID provider=$LDAP_PROVIDER_HOST binddn="cn=$LDAP_SYNCREPL_USER,$LDAP_BASE_DN" bindmethod=simple credentials="$LDAP_SYNCREPL_PASSWORD" searchbase="$LDAP_BASE_DN" logbase="cn=accesslog" logfilter="(&(objectClass=auditWriteObject)(reqResult=0))" schemachecking=on type=refreshAndPersist retry="60 +" syncdata=accesslog starttls=critical tls_reqcert=demand
+LDAP_CONSUMER_DB_SYNCPROV: rid=$LDAP_RID provider=$LDAP_PROVIDER_HOST binddn="cn=$LDAP_SYNCREPL_USER,$LDAP_BASE_DN" searchbase="$LDAP_BASE_DN" logbase="cn=accesslog" logfilter="(&(objectClass=auditWriteObject)(reqResult=0))" schemachecking=on type=refreshAndPersist retry="60 +" syncdata=accesslog starttls=critical tls_reqcert=demand
 
 # Do not change the ldap config
 # - If set to true with an existing database, config will remain unchanged. Image tls and replication config will not be run.

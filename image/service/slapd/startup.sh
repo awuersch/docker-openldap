@@ -34,8 +34,6 @@ LDAP_TLS_CRT_PATH="${CERTS_DIR}/$LDAP_TLS_CRT_FILENAME"
 LDAP_TLS_KEY_PATH="${CERTS_DIR}/$LDAP_TLS_KEY_FILENAME"
 LDAP_TLS_DH_PARAM_PATH="${CERTS_DIR}/dhparam.pem"
 
-LDAP_CONFIG_ROOT_DN="cn=admin,cn=config"
-
 # CONTAINER_SERVICE_DIR and CONTAINER_STATE_DIR variables are set by
 # the baseimage run tool more info : https://github.com/osixia/docker-light-baseimage
 
@@ -56,13 +54,14 @@ if [ ! -e "$FIRST_START_DONE" ]; then
 
   function get_ldap_base_dn() {
     # if LDAP_BASE_DN is empty set value from LDAP_DOMAIN
-    [[ -z "$LDAP_BASE_DN" ]] && {
+    if [ -z "$LDAP_BASE_DN" ]; then
       IFS='.' read -ra LDAP_BASE_DN_TABLE <<< "$LDAP_DOMAIN"
       for i in "${LDAP_BASE_DN_TABLE[@]}"; do
         EXT="dc=$i,"
         LDAP_BASE_DN=$LDAP_BASE_DN$EXT
       done
-    }
+      LDAP_BASE_DN=${LDAP_BASE_DN::-1}
+    fi
   }
 
   get_ldap_base_dn
@@ -72,45 +71,29 @@ if [ ! -e "$FIRST_START_DONE" ]; then
   }
 
   if [[ X"$LDAP_AUTHENTICATION" == X"simple" ]] ; then
-
     LDAP_DB_ROOT_DN="cn=admin,$LDAP_BASE_DN"
-
-    function ldap_add_or_modify() {
-      local LDIF_FILE=$1
-      local a=(-Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE)
-      local b=(-h localhost -p 389
-        -D $LDAP_DB_ROOT_DN -w $LDAP_ADMIN_PASSWORD
-	-f $LDIF_FILE)
-      sed -i -e "{
-        s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
-        s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
-      }" $LDIF_FILE
-      if grep -iq changetype $LDIF_FILE ; then
-        ldapmodify "${a[@]}" |& lhd || ldapmodify "${b[@]} |& lhd
-      else
-        ldapadd "${a[@]}" |& lhd || ldapadd "${b[@]} |& lhd
-      fi
-    }
-
+    LDAP_DB_ROOT_PW="$LDAP_ADMIN_PASSWORD"
   elif [[ X"$LDAP_AUTHENTICATION" == X"sasl" ]] ; then
-
-    function ldap_add_or_modify() {
-      local LDIF_FILE=$1
-      local a=(-Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE)
-      local b=(-Y GSSAPI -Q -h localhost -p 389
-        -D $LDAP_CONFIG_ROOT_DN
-	-f $LDIF_FILE)
-      sed -i -e "{
-        s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
-      }" $LDIF_FILE
-      if grep -iq changetype $LDIF_FILE ; then
-        ldapmodify "${a[@]}" |& lhd || ldapmodify "${b[@]} |& lhd
-      else
-        ldapadd "${a[@]}" |& lhd || ldapadd "${b[@]} |& lhd
-      fi
-    }
-
+    LDAP_DB_ROOT_DN="cn=admin,cn=config"
+    LDAP_DB_ROOT_PW="$LDAP_CONFIG_PASSWORD"
   fi
+
+  function ldap_add_or_modify() { # LDIF_FILE
+    local LDIF_FILE=$1
+    local a=(-Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE)
+    local b=(-h localhost -p 389
+      -D $LDAP_DB_ROOT_DN -w $LDAP_DB_ROOT_PW
+      -f $LDIF_FILE)
+    sed -i -e "{
+      s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
+      s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
+    }" $LDIF_FILE
+    if grep -iq changetype $LDIF_FILE ; then
+      ldapmodify "${a[@]}" |& lhd || ldapmodify "${b[@]}" |& lhd
+    else
+      ldapadd "${a[@]}" |& lhd || ldapadd "${b[@]}" |& lhd
+    fi
+  }
 
   BOOTSTRAP_DIR=${ASSETS_DIR}/config/bootstrap
   SCHEMA_DIR=${BOOTSTRAP_DIR}/schema
@@ -194,14 +177,14 @@ EOF
   fi
 
   # set authentication
-  if [[ X"$LDAP_AUTHENTICATION" != X"simple" || "X$LDAP_AUTHENTICATION" = "Xsasl" ]]; then
+  if [[ X"$LDAP_AUTHENTICATION" != X"simple" && X"$LDAP_AUTHENTICATION" != X"sasl" ]]; then
     log-helper error "Error: authentication must be simple or sasl"
     exit 1
   else
     echo "export LDAP_AUTHENTICATION=$LDAP_AUTHENTICATION" > $WAS_STARTED_WITH_AUTHENTICATION
   fi
 
-  [[ X"$LDAP_CONSUMER" != X"true" ]] && touch $IS_LDAP_CONSUMER
+  [[ X"$LDAP_CONSUMER" == X"true" ]] && touch $IS_LDAP_CONSUMER
 
   if [ "${KEEP_EXISTING_CONFIG,,}" == "true" ]; then
     log-helper info "/!\ KEEP_EXISTING_CONFIG = true configration will not be updated"
@@ -268,7 +251,7 @@ EOF
       log-helper info "Add bootstrap schemas..."
 
       # add ppolicy schema
-      ldapadd -c -Y EXTERNAL -Q -H ldapi:/// -f /etc/ldap/schema/ppolicy.ldif 2>&1 | log-helper debug
+      ldapadd -c -Y EXTERNAL -Q -H ldapi:/// -f /etc/ldap/schema/ppolicy.ldif |& log-helper debug
 
       # convert schemas to ldif
       SCHEMAS=""
@@ -284,7 +267,7 @@ EOF
         SCHEMA=$(basename "${f}" .ldif)
         ADD_SCHEMA=$(is_new_schema $SCHEMA)
         if [ "$ADD_SCHEMA" -eq 1 ]; then
-          ldapadd -c -Y EXTERNAL -Q -H ldapi:/// -f $f 2>&1 | log-helper debug
+          ldapadd -c -Y EXTERNAL -Q -H ldapi:/// -f $f |& log-helper debug
         else
           log-helper info "schema ${f} already exists"
         fi
@@ -300,54 +283,38 @@ EOF
 
       # set authentication
 
-      AUTH_DIR=$LDIF_DIR/authentication/$LDAP_AUTHENTICATION
-
-      if [[ X"$LDAP_AUTHENTICATION" != X"sasl" ]] ; then
-
-	# change database rootDN and rootPW to same as cn=admin,cn=config
-        LDIF_FILE=$AUTH_DIR/security.ldif
-        sed -i -e "{
-          s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
-          s|{{ LDAP_CONFIG_PASSWORD_ENCRYPTED }}|${LDAP_CONFIG_PASSWORD_ENCRYPTED}|g
-        }" $LDIF_FILE
-
-	# note, we use simple base DN and password for this step!
-        ldapmodify -h localhost -p 389 -D cn=admin,$LDAP_BASE_DN -w $LDAP_ADMIN_PASSWORD -f $LDIF_FILE |& log-helper debug
+      if [[ X"$LDAP_AUTHENTICATION" == X"sasl" ]] ; then
 
 	# now we're in SASL_ROOT_DN territory.
-        LDAP_DB_ROOT_DN="$LDAP_CONFIG_ROOT_DN"
+        LDAP_DB_ROOT_DN="cn=admin,cn=config"
         LDAP_DB_ROOT_PW="$LDAP_CONFIG_PASSWORD"
 
         # adapt sasl config file
-        LDIF_FILE=$AUTH_DIR/sasl.ldif
+        F=$LDIF_DIR/sasl/sasl.ldif
         sed -i -e "{
+          s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
           s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g
           s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
           s|{{ LDAP_REALM }}|${LDAP_REALM}|g
-        }" $LDIF_FILE
+          s|{{ LDAP_SYNCREPL_USER }}|${LDAP_SYNCREPL_USER}|g
+          s|\$LDAP_READONLY_USER_USERNAME|$LDAP_READONLY_USER_USERNAME|g
+        }" $F
 
         # run sasl config file
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE |& log-helper debug
+        log-helper debug "Processing file $F"
+        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
 
 	# now we're SASL-enabled.
 
 	# TODO: add sasl security levels (watch out! -Y EXTERNAL is used here)
 
-      elif [[ X"$LDAP_AUTHENTICATION" != X"simple" ]] ; then
-        # adapt security config file
-	LDIF_FILE=${AUTH_DIR}/security.ldif
-        sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_FILE}
-
-        # run security config file
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $LDIF_FILE |& log-helper debug
+      elif [[ X"$LDAP_AUTHENTICATION" == X"simple" ]] ; then
 
         LDAP_DB_ROOT_DN="cn=admin,$LDAP_BASE_DN"
+        LDAP_DB_ROOT_PW="$LDAP_ADMIN_PASSWORD"
 
 	# now we're simple-enabled.
       fi
-
-      # adapt collection config file
-      sed -i "s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g" ${LDIF_DIR}/06-collection.ldif
 
       # process config files (*.ldif) in bootstrap directory (do no process files in subdirectories)
       log-helper info "Add image bootstrap ldif..."
@@ -367,7 +334,7 @@ EOF
 
         log-helper info "Add read only user..."
 
-	D=${AUTH_DIR}/readonly-user
+	D=${LDIF_DIR}/readonly-user
 	F=$D/readonly-user.ldif
 
         LDAP_READONLY_USER_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_READONLY_USER_PASSWORD)
@@ -378,18 +345,7 @@ EOF
 	}" $F
 
         log-helper debug "Processing file $F"
-        ldapmodify -h localhost -p 389 -D $LDAP_DB_ROOT_DN -w $LDAP_DB_ROOT_PASSWORD -f $F 2>&1 | log-helper debug
-
-	F=$D/readonly-user-acl.ldif
-
-        sed -i -e "{
-	  s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
-          s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
-          s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
-	}" $F
-
-        log-helper debug "Processing file $F"
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F 2>&1 | log-helper debug
+        ldapmodify -h localhost -p 389 -D $LDAP_DB_ROOT_DN -w $LDAP_DB_ROOT_PW -f $F |& log-helper debug
 
       fi
 
@@ -404,24 +360,17 @@ EOF
 
 	F=$D/accesslog-module.ldif
         log-helper debug "Processing file $F"
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F 2>&1 | log-helper debug
-
-	F=$D/accesslog-security.ldif
-        sed -i -e "{
-          s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
-          s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
-	  s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
-	}" $F
-        log-helper debug "Processing file $F"
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F 2>&1 | log-helper debug
+        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
 
 	F=$D/accesslog-syncprov.ldif
         sed -i -e "{
           s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
-	  s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
+          s|{{ LDAP_DB_ROOT_DN }}|${LDAP_DB_ROOT_DN}|g
+          s|{{ LDAP_SYNCREPL_USER }}|${LDAP_SYNCREPL_USER}|g
+          s|\$LDAP_READONLY_USER_USERNAME|$LDAP_READONLY_USER_USERNAME|g
 	}" $F
         log-helper debug "Processing file $F"
-        ldapadd -Y EXTERNAL -Q -H ldapi:/// -f $F 2>&1 | log-helper debug
+        ldapadd -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
       fi
 
       # accesslog support
@@ -431,10 +380,16 @@ EOF
 	D=${LDIF_DIR}/consumer
 	F=$D/consumer.ldif
 
-        # fix CONSUMER_DB_SYNCPROV to be sed-friendly
-	export LDAP_CONSUMER_DB_SYNCPROV="${LDAP_CONSUMER_DB_SYNCPROV//&/\\&}"
+	# fix for sasl
+        if [[ X"$LDAP_AUTHENTICATION" == X"sasl" ]] ; then
+	  toadd="bindmethod=sasl"
+        else
+	  toadd="bindmethod=simple credentials=${LDAP_SYNCREPL_PASSWORD}"
+        fi
+        LDAP_CONSUMER_DB_SYNCPROV="${LDAP_CONSUMER_DB_SYNCPROV} ${toadd}"
 
-	# TODO: fix this for SASL
+        # fix so sed edits will work (filters may have ampersands)
+	LDAP_CONSUMER_DB_SYNCPROV="${LDAP_CONSUMER_DB_SYNCPROV//&/\\&}"
 
         sed -i "{
 	  s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
@@ -449,9 +404,11 @@ EOF
           s|\$LDAP_ADMIN_PASSWORD|$LDAP_ADMIN_PASSWORD|g
           s|\$LDAP_READONLY_USER_PASSWORD|$LDAP_READONLY_USER_PASSWORD|g
           s|\$LDAP_BASE_DN|$LDAP_BASE_DN|g
+          s|\$LDAP_DB_ROOT_DN|$LDAP_DB_ROOT_DN|g
+          s|\$LDAP_DB_ROOT_PW|$LDAP_DB_ROOT_PW|g
 	}" $F
 
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F 2>&1 | log-helper debug
+        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
       fi
     fi
 
@@ -498,7 +455,7 @@ EOF
         s|{{ LDAP_TLS_VERIFY_CLIENT }}|${LDAP_TLS_VERIFY_CLIENT}|g
       }" $F
 
-      ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F 2>&1 | log-helper debug
+      ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
 
       [[ -f "$WAS_STARTED_WITH_TLS" ]] && rm -f "$WAS_STARTED_WITH_TLS"
       echo "export PREVIOUS_LDAP_TLS_CA_CRT_PATH=${LDAP_TLS_CA_CRT_PATH}" > $WAS_STARTED_WITH_TLS
@@ -509,20 +466,20 @@ EOF
       # enforce TLS
       if [ "${LDAP_TLS_ENFORCE,,}" == "true" ]; then
         log-helper info "Add enforce TLS..."
-        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $TLS_DIR/tls-enforce-enable.ldif 2>&1 | log-helper debug
+        ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $TLS_DIR/tls-enforce-enable.ldif |& log-helper debug
         touch $WAS_STARTED_WITH_TLS_ENFORCE
 
       # disable tls enforcing (not possible for now)
       #else
         #log-helper info "Disable enforce TLS..."
-        #ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/tls/tls-enforce-disable.ldif 2>&1 | log-helper debug || true
+        #ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/tls/tls-enforce-disable.ldif |& log-helper debug || true
         #[[ -f "$WAS_STARTED_WITH_TLS_ENFORCE" ]] && rm -f "$WAS_STARTED_WITH_TLS_ENFORCE"
       fi
 
     # disable tls (not possible for now)
     #else
       #log-helper info "Disable TLS config..."
-      #ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/tls/tls-disable.ldif 2>&1 | log-helper debug || true
+      #ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/tls/tls-disable.ldif |& log-helper debug || true
       #[[ -f "$WAS_STARTED_WITH_TLS" ]] && rm -f "$WAS_STARTED_WITH_TLS"
     fi
 
@@ -534,7 +491,7 @@ EOF
 
     function disableReplication() {
       sed -i "s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g" ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-disable.ldif
-      ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-disable.ldif 2>&1 | log-helper debug || true
+      ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f ${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication/replication-disable.ldif |& log-helper debug || true
       [[ -f "$WAS_STARTED_WITH_REPLICATION" ]] && rm -f "$WAS_STARTED_WITH_REPLICATION"
     }
 
@@ -545,6 +502,18 @@ EOF
 
       D=${CONTAINER_SERVICE_DIR}/slapd/assets/config/replication
       F=$D/replication-enable.ldif
+
+      if [[ X"$LDAP_AUTHENTICATION" == X"sasl" ]] ; then
+        LDAP_REPLICATION_CONFIG_SYNCPROV="${LDAP_REPLICATION_CONFIG_SYNCPROV} bindmethod=sasl"
+        LDAP_REPLICATION_DB_SYNCPROV="${LDAP_REPLICATION_DB_SYNCPROV} bindmethod=sasl"
+      else
+        LDAP_REPLICATION_CONFIG_SYNCPROV="${LDAP_REPLICATION_CONFIG_SYNCPROV} bindmethod=simple credentials=${LDAP_CONFIG_PASSWORD}"
+        LDAP_REPLICATION_DB_SYNCPROV="${LDAP_REPLICATION_DB_SYNCPROV} bindmethod=simple credentials=${LDAP_ADMIN_PASSWORD}"
+      fi
+
+      # fix so sed edits will work (filters may have ampersands)
+      LDAP_REPLICATION_CONFIG_SYNCPROV="${LDAP_REPLICATION_CONFIG_SYNCPROV//&/\\&}"
+      LDAP_REPLICATION_DB_SYNCPROV="${LDAP_REPLICATION_DB_SYNCPROV//&/\\&}"
 
       i=1
       for host in $(complex-bash-env iterate LDAP_REPLICATION_HOSTS)
@@ -561,8 +530,10 @@ EOF
       get_ldap_base_dn
       sed -i -e "{
         s|\$LDAP_BASE_DN|$LDAP_BASE_DN|g
+        s|\$LDAP_DB_ROOT_DN|$LDAP_DB_ROOT_DN|g
         s|\$LDAP_DOMAIN|$LDAP_DOMAIN|g
         s|\$LDAP_ADMIN_PASSWORD|$LDAP_ADMIN_PASSWORD|g
+        s|\$LDAP_DB_ROOT_PW|$LDAP_DB_ROOT_PW|g
         s|\$LDAP_CONFIG_PASSWORD|$LDAP_CONFIG_PASSWORD|g
         /{{ LDAP_REPLICATION_HOSTS }}/d
         /{{ LDAP_REPLICATION_HOSTS_CONFIG_SYNC_REPL }}/d
@@ -570,7 +541,7 @@ EOF
         s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
       }" $F
 
-      ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f $F 2>&1 | log-helper debug || true
+      ldapmodify -c -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug || true
 
       [[ -f "$WAS_STARTED_WITH_REPLICATION" ]] && rm -f "$WAS_STARTED_WITH_REPLICATION"
       echo "export PREVIOUS_HOSTNAME=${HOSTNAME}" > $WAS_STARTED_WITH_REPLICATION
@@ -581,6 +552,45 @@ EOF
       disableReplication || true
 
     fi
+
+    #
+    # set access
+    #
+
+    LDAP_KDC=false
+
+    ACCESS_BITS=
+    if [[ X"${LDAP_KDC,,}" == X"true" ]] ; then
+      ACCESS_BITS+=1
+    else
+      ACCESS_BITS+=0
+    fi
+    if [[ X"${LDAP_PROVIDER,,}" == X"true" || X"${LDAP_CONSUMER,,}" == X"true" ]] ; then
+      ACCESS_BITS+=1
+    else
+      ACCESS_BITS+=0
+    fi
+    if [[ X"${LDAP_READONLY_USER,,}" == X"true" && X"${LDAP_SYNCREPL_USER}" != X"\$LDAP_READONLY_USER_USERNAME" ]] ; then
+      ACCESS_BITS+=1
+    else
+      ACCESS_BITS+=0
+    fi
+
+    F=$LDIF_DIR/access/${ACCESS_BITS}-access.ldif
+
+    sed -i -e "{
+      s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
+      s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
+      s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
+      s|{{ LDAP_SYNCREPL_USER }}|${LDAP_SYNCREPL_USER}|g
+      s|\$LDAP_READONLY_USER_USERNAME|$LDAP_READONLY_USER_USERNAME|g
+    }" $F
+
+    log-helper debug "Processing file $F"
+    ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
+
+    # TODO: remove passwords if sasl
+    # TODO: add sasl security levels (watch out! -Y EXTERNAL is used here)
 
     #
     # stop OpenLDAP

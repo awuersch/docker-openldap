@@ -3,24 +3,17 @@ changetype: modify
 delete: olcAccess
 -
 add: olcAccess
-olcAccess: {0}to attrs=userPassword,shadowLastChange
+olcAccess: to attrs=userPassword,shadowLastChange
   by self write
-  by dn="cn=admin,{{ LDAP_BASE_DN }}" write
   by dn="cn={{ LDAP_READONLY_USER_USERNAME }},{{ LDAP_BASE_DN }}" read
   by anonymous auth
   by * none
-olcAccess: {1}to *
+olcAccess: to *
   by self write
-  by dn="cn=admin,{{ LDAP_BASE_DN }}" write
   by dn="cn={{ LDAP_READONLY_USER_USERNAME }},{{ LDAP_BASE_DN }}" read
   by * none
 -
-delete: olcLimits
--
 add: olcLimits
-olcLimits: {0}dn.exact="cn=admin,{{ LDAP_BASE_DN }}"
-  size.soft=unlimited size.hard=unlimited
-  time.soft=unlimited time.hard=unlimited
-olcLimits: {1}dn.exact="cn={{ LDAP_READONLY_USER_USERNAME }},{{ LDAP_BASE_DN }}"
+olcLimits: dn.exact="cn={{ LDAP_READONLY_USER_USERNAME }},{{ LDAP_BASE_DN }}"
   size.soft=unlimited size.hard=unlimited
   time.soft=unlimited time.hard=unlimited

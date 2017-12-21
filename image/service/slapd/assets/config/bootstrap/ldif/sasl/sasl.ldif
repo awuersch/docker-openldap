@@ -13,4 +13,16 @@ add: olcAuthzRegexp
 olcAuthzRegexp: {1}"uid=host/([^/]*).{{ LDAP_DOMAIN }},cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn=$1,ou=hosts,{{ LDAP_BASE_DN }}"
 -
 add: olcAuthzRegexp
-olcAuthzRegexp: {2}"uid=ldap/admin,cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn=admin,cn=config"
+olcAuthzRegexp: {2}"uid=ldapadm/admin,cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn=admin,cn=config"
+-
+add: olcAuthzRegexp
+olcAuthzRegexp: {3}"uid=ldapsync/admin,cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn={{ LDAP_SYNCREPL_USER }},{{ LDAP_BASE_DN }}"
+
+dn: olcDatabase={1}{{ LDAP_BACKEND }},cn=config
+changetype: modify
+delete: olcRootDN
+-
+add: olcRootDN
+olcRootDN: cn=admin,cn=config
+-
+delete: olcRootPW

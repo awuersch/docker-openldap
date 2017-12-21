@@ -1,0 +1,19 @@
+dn: olcDatabase={1}{{ LDAP_BACKEND }},cn=config
+changetype: modify
+delete: olcAccess
+-
+add: olcAccess
+olcAccess: to attrs=userPassword,shadowLastChange
+  by self write
+  by dn="cn={{ LDAP_SYNCREPL_USER }},{{ LDAP_BASE_DN }}" read
+  by anonymous auth
+  by * none
+olcAccess: to *
+  by self write
+  by dn="cn={{ LDAP_SYNCREPL_USER }},{{ LDAP_BASE_DN }}" read
+  by * none
+-
+add: olcLimits
+olcLimits: dn.exact="cn={{ LDAP_SYNCREPL_USER }},{{ LDAP_BASE_DN }}"
+  size.soft=unlimited size.hard=unlimited
+  time.soft=unlimited time.hard=unlimited
