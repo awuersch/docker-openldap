@@ -88,6 +88,12 @@ if [ ! -e "$FIRST_START_DONE" ]; then
       s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
       s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
     }" $LDIF_FILE
+    if [ "${LDAP_READONLY_USER,,}" == "true" ]; then
+      sed -i -e "{
+        s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
+        s|{{ LDAP_READONLY_USER_PASSWORD_ENCRYPTED }}|${LDAP_READONLY_USER_PASSWORD_ENCRYPTED}|g
+      }" $LDIF_FILE
+    fi
     if grep -iq changetype $LDIF_FILE ; then
       ldapmodify "${a[@]}" |& lhd || ldapmodify "${b[@]}" |& lhd
     else
@@ -109,7 +115,8 @@ if [ ! -e "$FIRST_START_DONE" ]; then
   # database and config directory are empty
   # setup bootstrap config - Part 1
   #
-  if [ -z "$(ls -A -I lost+found /var/lib/ldap)" ] && [ -z "$(ls -A -I lost+found /etc/ldap/slapd.d)" ]; then
+  if [ -z "$(ls -A -I lost+found -I .rmtab -I .gitignore /var/lib/ldap)" ] && \
+     [ -z "$(ls -A -I lost+found -I .rmtab -I .gitignore /etc/ldap/slapd.d)" ]; then
 
     BOOTSTRAP=true
 
@@ -164,14 +171,14 @@ EOF
   #
   # Error: the database directory (/var/lib/ldap) is empty but not the config directory (/etc/ldap/slapd.d)
   #
-  elif [ -z "$(ls -A -I lost+found /var/lib/ldap)" ] && [ ! -z "$(ls -A -I lost+found /etc/ldap/slapd.d)" ]; then
+  elif [ -z "$(ls -A -I lost+found -I .rmtab /var/lib/ldap)" ] && [ ! -z "$(ls -A -I lost+found -I .rmtab /etc/ldap/slapd.d)" ]; then
     log-helper error "Error: the database directory (/var/lib/ldap) is empty but not the config directory (/etc/ldap/slapd.d)"
     exit 1
 
   #
   # Error: the config directory (/etc/ldap/slapd.d) is empty but not the database directory (/var/lib/ldap)
   #
-  elif [ ! -z "$(ls -A -I lost+found /var/lib/ldap)" ] && [ -z "$(ls -A -I lost+found /etc/ldap/slapd.d)" ]; then
+  elif [ ! -z "$(ls -A -I lost+found -I .rmtab /var/lib/ldap)" ] && [ -z "$(ls -A -I lost+found -I .rmtab /etc/ldap/slapd.d)" ]; then
     log-helper error "Error: the config directory (/etc/ldap/slapd.d) is empty but not the database directory (/var/lib/ldap)"
     exit 1
   fi
@@ -338,14 +345,9 @@ EOF
 	F=$D/readonly-user.ldif
 
         LDAP_READONLY_USER_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_READONLY_USER_PASSWORD)
-        sed -i -e "{
-	  s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
-          s|{{ LDAP_READONLY_USER_PASSWORD_ENCRYPTED }}|${LDAP_READONLY_USER_PASSWORD_ENCRYPTED}|g
-          s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
-	}" $F
 
         log-helper debug "Processing file $F"
-        ldapmodify -h localhost -p 389 -D $LDAP_DB_ROOT_DN -w $LDAP_DB_ROOT_PW -f $F |& log-helper debug
+        ldap_add_or_modify -f $F
 
       fi
 

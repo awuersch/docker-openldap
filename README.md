@@ -42,6 +42,7 @@ Latest release: 1.2.0 - OpenLDAP 2.4.44 -  [Changelog](CHANGELOG.md) | [Docker H
 	- [Tests](#tests)
 	- [Kubernetes](#kubernetes)
 	- [Under the hood: osixia/light-baseimage](#under-the-hood-osixialight-baseimage)
+- [Changelog](#security)
 - [Changelog](#changelog)
 
 ## Contributing
@@ -51,6 +52,11 @@ If you find this image useful here's how you can help:
 - Send a pull request with your kickass new features and bug fixes
 - Help new users with [issues](https://github.com/osixia/docker-openldap/issues) they may encounter
 - Support the development of this image and star this repo !
+
+## Security
+If you discover a security vulnerability within this docker image, please send email to the Osixia! team at security@osixia.net. For minor vulnerabilities feel free to add an issue here on github.
+
+Please include as many details as possible.
 
 ## Quick Start
 Run OpenLDAP docker image:
