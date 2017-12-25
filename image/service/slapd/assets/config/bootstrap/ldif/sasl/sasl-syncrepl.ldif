@@ -1,0 +1,4 @@
+dn: cn=config
+changetype: modify
+add: olcAuthzRegexp
+olcAuthzRegexp: {3}"uid=ldapsync/admin,cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn={{ LDAP_SYNCREPL_USER }},{{ LDAP_BASE_DN }}"

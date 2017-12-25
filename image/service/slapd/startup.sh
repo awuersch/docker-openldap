@@ -303,13 +303,12 @@ EOF
           s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g
           s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
           s|{{ LDAP_REALM }}|${LDAP_REALM}|g
-          s|{{ LDAP_SYNCREPL_USER }}|${LDAP_SYNCREPL_USER}|g
-          s|\$LDAP_READONLY_USER_USERNAME|$LDAP_READONLY_USER_USERNAME|g
         }" $F
 
         # run sasl config file
         log-helper debug "Processing file $F"
         ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
+
 
 	# now we're SASL-enabled.
 
@@ -349,6 +348,19 @@ EOF
         log-helper debug "Processing file $F"
         ldap_add_or_modify -f $F
 
+        if [[ X"${LDAP_AUTHENTICATION}" == X"sasl" ]] ; then
+          F=$LDIF_DIR/sasl/sasl-readonly.ldif
+          sed -i -e "{
+            s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g
+            s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
+            s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
+          }" $F
+
+          # run sasl config file
+          log-helper debug "Processing file $F"
+          ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
+	fi
+
       fi
 
       # accesslog support
@@ -373,6 +385,20 @@ EOF
 	}" $F
         log-helper debug "Processing file $F"
         ldapadd -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
+
+        if [[ X"${LDAP_AUTHENTICATION}" == X"sasl" ]] ; then
+          F=$LDIF_DIR/sasl/sasl-syncrepl.ldif
+          sed -i -e "{
+            s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g
+            s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
+            s|{{ LDAP_SYNCREPL_USER }}|${LDAP_SYNCREPL_USER}|g
+            s|\$LDAP_READONLY_USER_USERNAME|$LDAP_READONLY_USER_USERNAME|g
+          }" $F
+
+          # run sasl config file
+          log-helper debug "Processing file $F"
+          ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
+	fi
       fi
 
       # accesslog support
@@ -411,6 +437,29 @@ EOF
 	}" $F
 
         ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
+      fi
+
+      if [[ X"${LDAP_KDC,,}" == X"true" ]] ; then
+        log-helper info "setup kdc"
+
+	kdb5_ldap_util \
+	  -D ${LDAP_DB_ROOT_DN} -w ${LDAP_DB_ROOT_PW} -H ldapi:/// \
+	  create \
+	  -P master \
+	  -subtrees "ou=accounts,${LDAP_BASE_DN}" \
+	  -sscope sub \
+	  -containerref "cn=krbContainer,${LDAP_BASE_DN}" \
+	  -s -r "${LDAP_REALM}"
+	kdb5_ldap_util \
+	  -D ${LDAP_DB_ROOT_DN} -w ${LDAP_DB_ROOT_PW} -H ldapi:/// \
+	  stashsrvpw \
+	  -f /etc/krb5kdc/service.keyfile \
+	  "cn=kdc-srv,${LDAP_BASE_DN}"
+	kdb5_ldap_util \
+	  -D ${LDAP_DB_ROOT_DN} -w ${LDAP_DB_ROOT_PW} -H ldapi:/// \
+	  stashsrvpw \
+	  -f /etc/krb5kdc/service.keyfile \
+	  "cn=adm-srv,${LDAP_BASE_DN}"
       fi
     fi
 
@@ -558,8 +607,6 @@ EOF
     #
     # set access
     #
-
-    LDAP_KDC=false
 
     ACCESS_BITS=
     if [[ X"${LDAP_KDC,,}" == X"true" ]] ; then

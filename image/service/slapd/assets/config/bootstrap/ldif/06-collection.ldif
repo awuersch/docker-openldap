@@ -1,19 +1,29 @@
-dn: ou=people,{{ LDAP_BASE_DN }}
+dn: ou=accounts,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: organizationalUnit
+ou: accounts
+
+dn: ou=people,ou=accounts,{{ LDAP_BASE_DN }}
 objectClass: top
 objectClass: organizationalUnit
 ou: people
 
-dn: ou=groups,{{ LDAP_BASE_DN }}
+dn: ou=groups,ou=accounts,{{ LDAP_BASE_DN }}
 objectClass: top
 objectClass: organizationalUnit
 ou: groups
 
-dn: ou=hosts,{{ LDAP_BASE_DN }}
+dn: ou=hosts,ou=accounts,{{ LDAP_BASE_DN }}
 objectClass: top
 objectClass: organizationalUnit
 ou: hosts
 
-dn: ou=services,{{ LDAP_BASE_DN }}
+dn: ou=services,ou=accounts,{{ LDAP_BASE_DN }}
 objectClass: top
 objectClass: organizationalUnit
 ou: services
+
+dn: ou=hostgroups,ou=accounts,{{ LDAP_BASE_DN }}
+objectClass: top
+objectClass: organizationalUnit
+ou: hostgroups

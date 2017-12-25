@@ -1,0 +1,4 @@
+dn: cn=config
+changetype: modify
+add: olcAuthzRegexp
+olcAuthzRegexp: {3}"uid=ldapread/admin,cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn={{ LDAP_READONLY_USER_USERNAME }},{{ LDAP_BASE_DN }}"

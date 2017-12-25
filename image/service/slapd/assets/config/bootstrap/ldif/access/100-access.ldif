@@ -3,12 +3,8 @@ changetype: modify
 delete: olcAccess
 -
 add: olcAccess
-olcAccess: to dn.base="cn=Subschema"
+olcAccess: to dn.base=""
   by * read
-olcAccess: to *
-  by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" manage
-  by dn.base="cn=admin,cn=config" write
-  by * break
 olcAccess: to attrs=userPassword
   by self write
   by anonymous auth
@@ -24,21 +20,15 @@ olcAccess: to attrs=krbPrincipalName,krbLastPwdChange,krbPrincipalKey,krbExtraDa
   by dn.exact="cn=adm-srv,{{ LDAP_BASE_DN }}" write
   by self read
   by * auth
-olcAccess: to dn.subtree="cn={{ LDAP_REALM }},cn=krbContainer,{{ LDAP_BASE_DN }}"
+olcAccess: to dn.subtree="cn=krbContainer,{{ LDAP_BASE_DN }}"
   by dn.exact="cn=kdc-srv,{{ LDAP_BASE_DN }}" read
   by dn.exact="cn=adm-srv,{{ LDAP_BASE_DN }}" write
   by * none
-olcAccess: to dn.subtree="ou=people,{{ LDAP_BASE_DN }}"
-  by dn.exact="cn=kdc-srv,{{ LDAP_BASE_DN }}" read
-  by dn.exact="cn=adm-srv,{{ LDAP_BASE_DN }}" write
-  by dn.exact="uid=nssproxy,ou=people,{{ LDAP_BASE_DN }}" read
-  by self read
-  by * none
-olcAccess: to dn.subtree="ou=hosts,{{ LDAP_BASE_DN }}"
+olcAccess: to dn.subtree="ou=accounts,{{ LDAP_BASE_DN }}"
   by dn.exact="cn=kdc-srv,{{ LDAP_BASE_DN }}" read
   by dn.exact="cn=adm-srv,{{ LDAP_BASE_DN }}" write
   by dn.exact="uid=nssproxy,ou=people,{{ LDAP_BASE_DN }}" read
   by self read
   by * none
 olcAccess: to *
-  by * read
+  by * none
