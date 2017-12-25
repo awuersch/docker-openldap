@@ -1,0 +1,133 @@
+default-aci.ldif:
+
+dn: $SUFFIX
+changetype: modify
+add: aci
+
+# selfservice:Self can write own password
+aci: to attr = userPassword,krbPrincipalKey,sambalmpassword,sambantpassword
+  by self write
+
+# selfservice:User Self service
+aci: to attr = givenname,sn,cn,displayname,title,initials,loginshell,gecos,homephone,mobile,pager,facsimiletelephonenumber,telephonenumber,street,roomnumber,l,st,postalcode,manager,secretary,description,carlicense,labeleduri,inetuserhttpurl,seealso,employeetype,businesscategory,ou
+  by self write
+
+# selfservice:Users can manage their own SSH public keys
+aci: to attr = ipasshpubkey
+  by self write
+
+# selfservice:Users can manage their own X.509 certificates
+aci: to attr = usercertificate
+  by self write
+-
+dn: cn=etc,$SUFFIX
+changetype: modify
+add: aci
+# Admins can change GUI config, except aci
+aci: to filter=(objectClass=ipaGuiConfig) attrs=aci
+aci: to filter=(objectClass=ipaGuiConfig)
+  by dn.one="cn=admins,cn=groups,cn=accounts,$SUFFIX" write
+-
+dn: cn=ipa,cn=etc,$SUFFIX
+changetype: modify
+add: aci
+# Admins can change GUI config
+aci: to filter = (|(objectClass=ipaConfigObject)(dnahostname=*))
+  by dn.one="cn=admins,cn=groups,cn=accounts,$SUFFIX" delete
+-
+dn: cn=accounts,$SUFFIX
+changetype: modify
+add: aci
+# Admins can write password policy
+aci: to attr = krbMaxPwdLife,krbMinPwdLife,krbPwdMinDiffChars,krbPwdMinLength,krbPwdHistoryLength
+  by dn.one="cn=admins,cn=groups,cn=accounts,$SUFFIX" write
+# Admins can manage delegations
+aci: attr = aci
+  by dn.one="cn=admins,cn=groups,cn=accounts,$SUFFIX" write, delete
+# Users allowed to retrieve keytab keys
+aci: attr = ipaProtectedOperation;read_keys
+  by userattr="ipaAllowedToPerform;read_keys=#USERDN" read
+# Groups allowed to retrieve keytab keys
+aci: attr = ipaProtectedOperation;read_keys
+  by userattr="ipaAllowedToPerform;read_keys=#GROUPDN" read
+# Users allowed to create keytab keys
+aci: attr = ipaProtectedOperation;write_keys
+  by userattr="ipaAllowedToPerform;write_keys=#USERDN" write
+# Group allowed to create keytab keys
+aci: attr = ipaProtectedOperation;write_keys
+  by userattr="ipaAllowedToPerform;write_keys=#GROUPDN" write
+# Entities are allowed to rekey themselves
+aci: attr = ipaProtectedOperation;write_keys
+  by self write
+# Admins are allowed to rekey themselves
+aci: attr = ipaProtectedOperation;write_keys
+  by self write
+# Admins are allowed to rekey any entity
+aci: attr = ipaProtectedOperation;write_keys
+  by dn.one="cn=admins,cn=groups,cn=accounts,$SUFFIX" write
+# Entities are allowed to rekey managed entities
+aci: filter=(|(objectclass=ipaHost)(objectclass=ipaService)) attr = ipaProtectedOperation;write_keys
+  by userattr="managedby#USERDN"
+-
+dn: cn=services,cn=accounts,$SUFFIX
+changetype: modify
+add: aci
+# Admins can manage service keytab
+aci: attr = krbPrincipalKey,krbLastPwdChange target="ldap:///krbprincipalname=*,cn=services,cn=accounts,$SUFFIX"
+  by dn.one="cn=admins,cn=groups,cn=accounts,$SUFFIX" write
+# Hosts can manage service certificates and kerberos keys
+aci: attr = userCertificate,krbPrincipalKey
+  by userattr = "parent[0,1].managedby#USERDN" write
+-
+dn: cn=computers,cn=accounts,$SUFFIX
+changetype: modify
+add: aci
+
+# Hosts can modify their own certs and keytabs
+aci: attr = usercertificate,krblastpwdchange,description,l,nshostlocation,nshardwareplatform,nsosversion
+  by self write
+# Hosts can manage their own SSH public keys
+aci: attr = ipasshpubkey
+  by self write
+
+# Hosts can manage other host certificates and kerberos keys
+aci: attr = userCertificate,krbPrincipalKey
+  by userattr = "parent[0,1].managedby#USERDN" write
+# Hosts can manage other host SSH public keys
+aci: attr = ipasshpubkey
+  by userattr = "parent[0,1].managedby#USERDN" write
+
+# Admins can manage host keytab
+aci: attr = krbPrincipalKey,krbLastPwdChange target="ldap:///fqdn=*,cn=computers,cn=accounts,$SUFFIX"
+  by dn.one="cn=admins,cn=groups,cn=accounts,$SUFFIX" write
+-
+dn: cn=accounts,$SUFFIX
+changetype: modify
+add: aci
+
+# Search existence of password and kerberos keys
+aci: attr = userPassword,krbPrincipalKey
+  by * search
+-
+# Let users manage their own tokens
+dn: $SUFFIX
+changetype: notify
+add: aci
+# Users/managers can read basic token info
+aci: filter=(objectClass=ipaToken) attr = objectclass,description,managedBy,ipatokenUniqueID,ipatokenDisabled,ipatokenNotBefore,ipatokenNotAfter,ipatokenVendor,ipatokenModel,ipatokenSerial,ipatokenOwner
+  by userattr = "ipatokenOwner#USERDN" or userattr = "managedBy#USERDN" (read, search, compare)
+# Users/managers can see TOTP details
+aci: filter=(objectClass=ipatokenTOTP) attr = ipatokenOTPalgorithm,ipatokenOTPdigits,ipatokenTOTPtimeStep
+  by userattr = "ipatokenOwner#USERDN" or userattr = "managedBy#USERDN" (read, search, compare)
+# Users/managers can see HOTP details
+aci: filter=(objectClass=ipatokenHOTP) attr = ipatokenOTPalgorithm,ipatokenOTPdigits
+  by userattr = "ipatokenOwner#USERDN" or userattr = "managedBy#USERDN" (read, search, compare)
+# Managers can write basic token info
+aci: filter=(objectClass=ipaToken) attr = description,ipatokenDisabled,ipatokenNotBefore,ipatokenNotAfter,ipatokenVendor,ipatokenModel,ipatokenSerial
+  by userattr = "managedBy#USERDN" write
+# Managers can delete tokens
+aci: filter=(objectClass=ipaToken)
+  by userattr = "managedBy#USERDN" delete
+# Users can create self-managed tokens
+aci: filter=(objectClass=ipaToken)
+  by userattr = "ipatokenOwner#SELFDN" or userattr = "managedBy#SELFDN" add
