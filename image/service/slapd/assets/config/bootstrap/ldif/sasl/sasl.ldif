@@ -1,16 +1,16 @@
 dn: cn=config
 changetype: modify
 add: olcSaslHost
-olcSaslHost: localhost
+olcSaslHost: ds1.tony.wuersch.name
 -
 add: olcSaslRealm
 olcSaslRealm: {{ LDAP_REALM }}
 -
 add: olcAuthzRegexp
-olcAuthzRegexp: {0}"uid=([^/]*),cn={{ LDAP_DOMAIN }},cn=GSSAPI,cn=auth" "uid=$1,ou=people,{{ LDAP_BASE_DN }}"
+olcAuthzRegexp: {0}"uid=([^/]*),cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "uid=$1,ou=people,ou=accounts,{{ LDAP_BASE_DN }}"
 -
 add: olcAuthzRegexp
-olcAuthzRegexp: {1}"uid=host/([^/]*).{{ LDAP_DOMAIN }},cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn=$1,ou=hosts,{{ LDAP_BASE_DN }}"
+olcAuthzRegexp: {1}"uid=host/([^/]*).{{ LDAP_DOMAIN }},cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn=$1,ou=hosts,ou=accounts,{{ LDAP_BASE_DN }}"
 -
 add: olcAuthzRegexp
 olcAuthzRegexp: {2}"uid=ldapadm/admin,cn={{ LDAP_DOMAIN }},cn=gssapi,cn=auth" "cn=admin,cn=config"

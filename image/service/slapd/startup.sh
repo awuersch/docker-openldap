@@ -88,7 +88,7 @@ if [ ! -e "$FIRST_START_DONE" ]; then
       s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
       s|{{ LDAP_BACKEND }}|${LDAP_BACKEND}|g
     }" $LDIF_FILE
-    if [ "${LDAP_READONLY_USER,,}" == "true" ]; then
+    if [ X"${LDAP_READONLY_USER,,}" == X"true" ]; then
       sed -i -e "{
         s|{{ LDAP_READONLY_USER_USERNAME }}|${LDAP_READONLY_USER_USERNAME}|g
         s|{{ LDAP_READONLY_USER_PASSWORD_ENCRYPTED }}|${LDAP_READONLY_USER_PASSWORD_ENCRYPTED}|g
@@ -165,6 +165,12 @@ EOF
       f=krb5.$suffix
       [[ -f /etc/krb5/$f ]] && cp /etc/krb5/$f /etc/$f
     done
+
+    F=/etc/krb5.conf
+    [[ -f $F ]] && sed -i -e "{
+      s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g
+      s|{{ LDAP_REALM }}|${LDAP_REALM}|g
+    }" $F
 
     # fix permissions on keytab
     chown openldap:openldap /etc/krb5.keytab
@@ -282,10 +288,9 @@ EOF
 
       # set config password
       LDAP_CONFIG_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_CONFIG_PASSWORD)
-      sed -i "s|{{ LDAP_CONFIG_PASSWORD_ENCRYPTED }}|${LDAP_CONFIG_PASSWORD_ENCRYPTED}|g" ${LDIF_DIR}/01-config-password.ldif
+      sed -i -e "s|{{ LDAP_CONFIG_PASSWORD_ENCRYPTED }}|${LDAP_CONFIG_PASSWORD_ENCRYPTED}|g" ${LDIF_DIR}/01-config-password.ldif
 
       log-helper info "Getting db base DN..."
-
       log-helper info "Setting authentication..."
 
       # set authentication
@@ -295,6 +300,8 @@ EOF
 	# now we're in SASL_ROOT_DN territory.
         LDAP_DB_ROOT_DN="cn=admin,cn=config"
         LDAP_DB_ROOT_PW="$LDAP_CONFIG_PASSWORD"
+
+        get_ldap_base_dn
 
         # adapt sasl config file
         F=$LDIF_DIR/sasl/sasl.ldif
@@ -318,6 +325,7 @@ EOF
 
         LDAP_DB_ROOT_DN="cn=admin,$LDAP_BASE_DN"
         LDAP_DB_ROOT_PW="$LDAP_ADMIN_PASSWORD"
+        LDAP_ADMIN_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_ADMIN_PASSWORD)
 
 	# now we're simple-enabled.
       fi
@@ -336,7 +344,7 @@ EOF
       done
 
       # read only user
-      if [ "${LDAP_READONLY_USER,,}" == "true" ]; then
+      if [[ X"${LDAP_READONLY_USER,,}" == X"true" ]]; then
 
         log-helper info "Add read only user..."
 
@@ -346,9 +354,11 @@ EOF
         LDAP_READONLY_USER_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_READONLY_USER_PASSWORD)
 
         log-helper debug "Processing file $F"
-        ldap_add_or_modify -f $F
+        ldap_add_or_modify $F
 
-        if [[ X"${LDAP_AUTHENTICATION}" == X"sasl" ]] ; then
+        if [[ X"${LDAP_AUTHENTICATION}" == X"sasl" && X"${LDAP_SYNCREPL_USER}" != X"\$LDAP_READONLY_USER_USERNAME" ]] ; then
+
+	  # readonly-user is different from syncrepl user, so ...
           F=$LDIF_DIR/sasl/sasl-readonly.ldif
           sed -i -e "{
             s|{{ LDAP_DOMAIN }}|${LDAP_DOMAIN}|g
@@ -364,13 +374,15 @@ EOF
       fi
 
       # accesslog support
-      if [ "${LDAP_PROVIDER,,}" == "true" ]; then
+      if [[ X"${LDAP_PROVIDER,,}" == X"true" ]]; then
         log-helper debug "Add accesslog config"
         log-helper info "Add accesslog subdir..."
         mkdir /var/lib/ldap/accesslog
         chown -R openldap:openldap /var/lib/ldap/accesslog
 
 	D=${LDIF_DIR}/provider
+        # TODO: add syncrepl user
+        LDAP_SYNCREPL_PASSWORD_ENCRYPTED=$(slappasswd -s $LDAP_SYNCREPL_PASSWORD)
 
 	F=$D/accesslog-module.ldif
         log-helper debug "Processing file $F"
@@ -402,7 +414,7 @@ EOF
       fi
 
       # accesslog support
-      if [ "${LDAP_CONSUMER,,}" == "true" ]; then
+      if [[ X"${LDAP_CONSUMER,,}" == X"true" ]]; then
         log-helper debug "Add consumer config"
 
 	D=${LDIF_DIR}/consumer
@@ -430,7 +442,9 @@ EOF
           s|\$LDAP_READONLY_USER_USERNAME|$LDAP_READONLY_USER_USERNAME|g
           s|\$LDAP_SYNCREPL_PASSWORD|$LDAP_SYNCREPL_PASSWORD|g
           s|\$LDAP_ADMIN_PASSWORD|$LDAP_ADMIN_PASSWORD|g
+          s|\$LDAP_ADMIN_PASSWORD_ENCRYPTED|$LDAP_ADMIN_PASSWORD_ENCRYPTED|g
           s|\$LDAP_READONLY_USER_PASSWORD|$LDAP_READONLY_USER_PASSWORD|g
+          s|\$LDAP_READONLY_USER_PASSWORD_ENCRYPTED|$LDAP_READONLY_USER_PASSWORD_ENCRYPTED|g
           s|\$LDAP_BASE_DN|$LDAP_BASE_DN|g
           s|\$LDAP_DB_ROOT_DN|$LDAP_DB_ROOT_DN|g
           s|\$LDAP_DB_ROOT_PW|$LDAP_DB_ROOT_PW|g
@@ -439,27 +453,55 @@ EOF
         ldapmodify -Y EXTERNAL -Q -H ldapi:/// -f $F |& log-helper debug
       fi
 
-      if [[ X"${LDAP_KDC,,}" == X"true" ]] ; then
-        log-helper info "setup kdc"
+      if [[ X"${LDAP_KDC,,}" == X"true" ]]; then
+        log-helper info "Setup KDC config"
+        mkdir -p /etc/krb5kdc
+        f=kdc.conf
+        F=/etc/krb5kdc/kdc.conf
+        [[ -f /etc/krb5/$f ]] && cp /etc/krb5/$f $F
+        [[ -f $F ]] && sed -i -e "{
+          s|{{ LDAP_KDC_REALM }}|${LDAP_KDC_REALM}|g
+          s|{{ LDAP_BASE_DN }}|${LDAP_BASE_DN}|g
+        }" $F
 
-	kdb5_ldap_util \
-	  -D ${LDAP_DB_ROOT_DN} -w ${LDAP_DB_ROOT_PW} -H ldapi:/// \
-	  create \
-	  -P master \
-	  -subtrees "ou=accounts,${LDAP_BASE_DN}" \
-	  -sscope sub \
-	  -containerref "cn=krbContainer,${LDAP_BASE_DN}" \
-	  -s -r "${LDAP_REALM}"
-	kdb5_ldap_util \
-	  -D ${LDAP_DB_ROOT_DN} -w ${LDAP_DB_ROOT_PW} -H ldapi:/// \
-	  stashsrvpw \
-	  -f /etc/krb5kdc/service.keyfile \
-	  "cn=kdc-srv,${LDAP_BASE_DN}"
-	kdb5_ldap_util \
-	  -D ${LDAP_DB_ROOT_DN} -w ${LDAP_DB_ROOT_PW} -H ldapi:/// \
-	  stashsrvpw \
-	  -f /etc/krb5kdc/service.keyfile \
-	  "cn=adm-srv,${LDAP_BASE_DN}"
+        f=kadm5.acl
+        F=/etc/krb5kdc/kadm5.acl
+        [[ -f /etc/krb5/$f ]] && cp /etc/krb5/$f $F
+
+        p="${LDAP_KDC_KDC_USER_PASSWORD}"
+        echo -e "${p}\n${p}" |& kdb5_ldap_util \
+          stashsrvpw \
+          -f /etc/krb5kdc/conf_keyfile \
+          "cn=${LDAP_KDC_KDC_USER_USERNAME},${LDAP_BASE_DN}"
+
+        p="${LDAP_KDC_ADM_USER_PASSWORD}"
+        echo -e "${p}\n${p}" |& kdb5_ldap_util \
+          stashsrvpw \
+          -f /etc/krb5kdc/conf_keyfile \
+          "cn=${LDAP_KDC_ADM_USER_USERNAME},${LDAP_BASE_DN}"
+
+        if [[ X"${LDAP_CONSUMER,,}" != X"true" ]]; then
+	  # in consumer case, consumer should get this from provider
+          D=${LDIF_DIR}/kdc
+          F=$D/srvdn.ldif
+          sed -i -e "{
+            s|{{ LDAP_KDC_KDC_USER_USERNAME }}|${LDAP_KDC_KDC_USER_USERNAME}|g
+            s|{{ LDAP_KDC_ADM_USER_USERNAME }}|${LDAP_KDC_ADM_USER_USERNAME}|g
+            s|{{ LDAP_KDC_KDC_USER_PASSWORD }}|${LDAP_KDC_KDC_USER_PASSWORD}|g
+            s|{{ LDAP_KDC_ADM_USER_PASSWORD }}|${LDAP_KDC_ADM_USER_PASSWORD}|g
+          }" $F
+          log-helper debug "Processing file $F"
+          ldap_add_or_modify $F
+
+          log-helper debug "Creating kdb container for ${LDAP_KDC_REALM}"
+          kdb5_ldap_util \
+            -D ${LDAP_DB_ROOT_DN} -w ${LDAP_DB_ROOT_PW} -H ldapi:/// \
+            create \
+            -P master \
+            -subtrees "ou=accounts,${LDAP_BASE_DN}" \
+            -sscope sub \
+            -s -r "${LDAP_KDC_REALM}"
+        fi
       fi
     fi
 
@@ -558,7 +600,7 @@ EOF
         LDAP_REPLICATION_CONFIG_SYNCPROV="${LDAP_REPLICATION_CONFIG_SYNCPROV} bindmethod=sasl"
         LDAP_REPLICATION_DB_SYNCPROV="${LDAP_REPLICATION_DB_SYNCPROV} bindmethod=sasl"
       else
-        LDAP_REPLICATION_CONFIG_SYNCPROV="${LDAP_REPLICATION_CONFIG_SYNCPROV} bindmethod=simple credentials=${LDAP_CONFIG_PASSWORD}"
+        LDAP_REPLICATION_CONFIG_SYNCPROV="${LDAP_REPLICATION_CONFIG_SYNCPROV} bindmethod=simple credentials=${LDAP_CONFIG_PASSWORD_ENCRYPTED}"
         LDAP_REPLICATION_DB_SYNCPROV="${LDAP_REPLICATION_DB_SYNCPROV} bindmethod=simple credentials=${LDAP_ADMIN_PASSWORD}"
       fi
 

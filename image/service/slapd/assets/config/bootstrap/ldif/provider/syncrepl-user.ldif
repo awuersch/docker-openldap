@@ -1,0 +1,7 @@
+dn: cn={{ LDAP_SYNCREPL_USER }},{{ LDAP_BASE_DN }}
+changetype: add
+cn: {{ LDAP_SYNCREPL_USER }}
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+userPassword: {{ LDAP_SYNCREPL_PASSWORD_ENCRYPTED }}
+description: LDAP syncrepl user
