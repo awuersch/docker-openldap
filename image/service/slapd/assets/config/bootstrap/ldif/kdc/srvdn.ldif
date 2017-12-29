@@ -1,13 +1,15 @@
-dn: cn={{ LDAP_KDC_KDC_USER_USERNAME }},{{ LDAP_BASE_DN }}
-cn: {{ LDAP_KDC_KDC_USER_USERNAME }}
+dn: uid={{ LDAP_KDC_KDC_USER_USERNAME }},ou=people,ou=accounts,{{ LDAP_BASE_DN }}
+objectClass: top
 objectClass: simpleSecurityObject
-objectClass: organizationalRole
+objectClass: account
+uid: {{ LDAP_KDC_KDC_USER_USERNAME }}
+userPassword: {{ LDAP_KDC_KDC_USER_PASSWORD_ENCRYPTED }}
 description: Default bind DN for the Kerberos KDC server
-userPassword: {{ LDAP_KDC_KDC_USER_PASSWORD }}
 
-dn: cn={{ LDAP_KDC_ADM_USER_USERNAME }},{{ LDAP_BASE_DN }}
-cn: {{ LDAP_KDC_ADM_USER_USERNAME }}
+dn: uid={{ LDAP_KDC_ADM_USER_USERNAME }},ou=people,ou=accounts,{{ LDAP_BASE_DN }}
+objectClass: top
 objectClass: simpleSecurityObject
-objectClass: organizationalRole
+objectClass: account
+uid: {{ LDAP_KDC_ADM_USER_USERNAME }}
+userPassword: {{ LDAP_KDC_ADM_USER_PASSWORD_ENCRYPTED }}
 description: Default bind DN for the Kerberos Administration server
-userPassword: {{ LDAP_KDC_ADM_USER_PASSWORD }}

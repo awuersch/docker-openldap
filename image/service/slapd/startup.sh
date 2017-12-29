@@ -454,8 +454,10 @@ EOF
       fi
 
       if [[ X"${LDAP_KDC,,}" == X"true" ]]; then
+	# TODO: limit updates to first replication host, or provider
         log-helper info "Setup KDC config"
         mkdir -p /etc/krb5kdc
+
         f=kdc.conf
         F=/etc/krb5kdc/kdc.conf
         [[ -f /etc/krb5/$f ]] && cp /etc/krb5/$f $F
@@ -467,28 +469,35 @@ EOF
         f=kadm5.acl
         F=/etc/krb5kdc/kadm5.acl
         [[ -f /etc/krb5/$f ]] && cp /etc/krb5/$f $F
+        [[ -f $F ]] && sed -i -e "{
+          s|{{ LDAP_KDC_REALM }}|${LDAP_KDC_REALM}|g
+        }" $F
 
         p="${LDAP_KDC_KDC_USER_PASSWORD}"
         echo -e "${p}\n${p}" |& kdb5_ldap_util \
           stashsrvpw \
           -f /etc/krb5kdc/conf_keyfile \
-          "cn=${LDAP_KDC_KDC_USER_USERNAME},${LDAP_BASE_DN}"
+          "uid=${LDAP_KDC_KDC_USER_USERNAME},ou=people,ou=accounts,${LDAP_BASE_DN}"
 
         p="${LDAP_KDC_ADM_USER_PASSWORD}"
         echo -e "${p}\n${p}" |& kdb5_ldap_util \
           stashsrvpw \
           -f /etc/krb5kdc/conf_keyfile \
-          "cn=${LDAP_KDC_ADM_USER_USERNAME},${LDAP_BASE_DN}"
+          "uid=${LDAP_KDC_ADM_USER_USERNAME},ou=people,ou=accounts,${LDAP_BASE_DN}"
 
         if [[ X"${LDAP_CONSUMER,,}" != X"true" ]]; then
 	  # in consumer case, consumer should get this from provider
+
+	  LDAP_KDC_KDC_USER_PASSWORD_ENCRYPTED=$(slappasswd -s ${LDAP_KDC_KDC_USER_PASSWORD})
+	  LDAP_KDC_ADM_USER_PASSWORD_ENCRYPTED=$(slappasswd -s ${LDAP_KDC_ADM_USER_PASSWORD})
+
           D=${LDIF_DIR}/kdc
           F=$D/srvdn.ldif
           sed -i -e "{
             s|{{ LDAP_KDC_KDC_USER_USERNAME }}|${LDAP_KDC_KDC_USER_USERNAME}|g
             s|{{ LDAP_KDC_ADM_USER_USERNAME }}|${LDAP_KDC_ADM_USER_USERNAME}|g
-            s|{{ LDAP_KDC_KDC_USER_PASSWORD }}|${LDAP_KDC_KDC_USER_PASSWORD}|g
-            s|{{ LDAP_KDC_ADM_USER_PASSWORD }}|${LDAP_KDC_ADM_USER_PASSWORD}|g
+            s|{{ LDAP_KDC_KDC_USER_PASSWORD_ENCRYPTED }}|${LDAP_KDC_KDC_USER_PASSWORD_ENCRYPTED}|g
+            s|{{ LDAP_KDC_ADM_USER_PASSWORD_ENCRYPTED }}|${LDAP_KDC_ADM_USER_PASSWORD_ENCRYPTED}|g
           }" $F
           log-helper debug "Processing file $F"
           ldap_add_or_modify $F

@@ -49,7 +49,7 @@ LDAP_AUTHENTICATION: simple
 LDAP_REPLICATION_CONFIG_SYNCPROV: binddn="cn=admin,cn=config" searchbase="cn=config" type=refreshAndPersist retry="60 +" timeout=1 starttls=critical
 LDAP_REPLICATION_DB_SYNCPROV: binddn="$LDAP_DB_ROOT_DN" searchbase="$LDAP_BASE_DN" type=refreshAndPersist interval=00:00:00:10 retry="60 +" timeout=1 starttls=critical
 LDAP_REPLICATION_HOSTS:
-  - ldap://ldap.$LDAP_DOMAIN # The order must be the same on all ldap servers
+  - ldap://ldap1.$LDAP_DOMAIN # The order must be the same on all ldap servers
   - ldap://ldap2.$LDAP_DOMAIN
   - ldap://ldap3.$LDAP_DOMAIN
 
@@ -67,7 +67,7 @@ LDAP_KDC_KDC_USER_PASSWORD: dontusethis
 LDAP_KDC_ADM_USER_USERNAME: adm-srv
 LDAP_KDC_ADM_USER_PASSWORD: dontusethat
 
-LDAP_PROVIDER_HOST: ldap://ldap.$LDAP_DOMAIN
+LDAP_PROVIDER_HOST: ldap://ldap1.$LDAP_DOMAIN
 LDAP_SYNCREPL_USER: $LDAP_READONLY_USER_USERNAME
 LDAP_SYNCREPL_PASSWORD: $LDAP_READONLY_USER_PASSWORD
 LDAP_RID: 0
