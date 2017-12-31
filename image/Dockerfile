@@ -21,15 +21,11 @@ RUN echo "path-include /usr/share/doc/krb5*" >> /etc/dpkg/dpkg.cfg.d/docker \
     && LC_ALL=C DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
        ldap-utils \
        libsasl2-modules \
-       libsasl2-modules-db \
        libsasl2-modules-gssapi-mit \
        libsasl2-modules-ldap \
-       libsasl2-modules-otp \
-       libsasl2-modules-sql \
        openssl \
        slapd \
        krb5-kdc-ldap \
-       ntp \
        krb5-config \
        krb5-user \
        krb5-k5tls \
