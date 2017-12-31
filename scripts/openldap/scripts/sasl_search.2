@@ -1,0 +1,17 @@
+#!/bin/bash -e
+
+(($#==1)) || {
+  >&2 echo "usage: $0 hostname-prefix"
+  exit 1
+}
+
+HOSTNAME_PREFIX=$1
+
+. ~/.ldapvars
+
+ldapsearch \
+  -x \
+  -D "$CONFIG_DN" -w "$CONFIG_PASSWORD" \
+  -b dc=tony,dc=wuersch,dc=name \
+  -H ldap://$HOSTNAME_PREFIX.tony.wuersch.name \
+  \* + -ZZ

@@ -8,7 +8,7 @@
 . ~/.ldapvars
 
 HOSTNAME_PREFIX=$1
-USER=$1
+USER=$2
 
 HOST="$HOSTNAME_PREFIX.tony.wuersch.name"
 
@@ -20,6 +20,7 @@ H="ldap://$HOST"
 set -x
 ldapdelete \
   -x \
+  -H $H \
   -D "$DN" -w "$PW" \
   -v -ZZ \
   $B

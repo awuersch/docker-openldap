@@ -4,9 +4,9 @@
 
 # run 4 ldap containers
 DIR=~/home/docker/awuersch/openldap
-$DIR/run-openldap-provider-mirror.sh ds1 ldap
+$DIR/run-openldap-provider-mirror.sh ds1 ldap1
 sleep 2
-$DIR/run-openldap-consumer.sh rs1 replica ldap://ldap.${LDAP_DOMAIN} 0
+$DIR/run-openldap-consumer.sh rs1 replica1 ldap://ldap1.${LDAP_DOMAIN} 0
 sleep 2
 $DIR/run-openldap-provider-mirror.sh ds2 ldap2
 sleep 2
@@ -28,7 +28,7 @@ function c_ip { # container
 }
 
 ip_a=("$(c_ip ds1)" "$(c_ip ds2)" "$(c_ip ds3)")
-ldap_a=(ldap ldap2 ldap3)
+ldap_a=(ldap1 ldap2 ldap3)
 ds_a=(ds1 ds2 ds3)
 dom=tony.wuersch.name
 

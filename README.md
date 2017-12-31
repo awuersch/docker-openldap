@@ -13,9 +13,6 @@ Latest release: 1.2.0 - OpenLDAP 2.4.44 -  [Changelog](CHANGELOG.md) | [Docker H
 - [What's New Here](#whats-new-here)
 - [What's Not Here](#whats-not-here)
 - [Security](#security)
-- [Environment Variables](#environment-variables)
-	- [Set your own environment variables](#set-your-own-environment-variables)
-		- [Link environment file](#link-environment-file)
 - [Changelog](#changelog)
 
 ## Genealogy
@@ -29,20 +26,18 @@ The other inspiration for this repo is
 
 ## Under the hood: osixia/light-baseimage
 
-This image is based on osixia/light-baseimage.
+This image is based on
+[osixia/light-baseimage](https://github.com/osixia/docker-light-baseimage).
+
 It uses the following features:
 
-- **ssl-tools** service to generate tls certificates
-- **log-helper** tool to print log messages based on the log level
+- **ssl-tools** service for auto-generated TLS certificates
+- **log-helper** tool to print log messages based on a log level
 - **run** tool as entrypoint to init the container environment
-
-To fully understand how this image works take a look at:
-https://github.com/osixia/docker-light-baseimage
 
 ## Future
 
-This and other repos are contributing to
-my little vision of privacy and its prerequisites,
+This contributes to my little vision of privacy and its prerequisites,
 see [here](https://tony.wuersch.name/stog-output/posts/vision-1.html).
 
 The vision asks for
@@ -54,9 +49,9 @@ The vision asks for
 - compatible location transmitters, and
 - visit history updaters. 
 
-## What's New Here
+## What's New
 
-This repo supports Osixia's openldap functionality, i.e.
+We support Osixia's openldap functionality, i.e.
 
 - TLS via self-signed CA autogeneration of certificates.
 - mirror mode replication.
@@ -67,7 +62,16 @@ Added are:
 - SASL (GSSAPI, i.e., Kerberos) support and Kerberos user support
 - Kerberos backend support
 
-It should support
+Scripts in the `scripts` directory show how we use the image
+currently. The main script is `run-container.sh`. The scripts
+source an `ldapvars` file with environment variable assignments.
+
+A python subdirectory under `scripts` has leader-election code
+for mirror-mode replicated servers, presuming etcd. One script
+there adjusts replica referral values based on leader-election
+results.
+
+This repo should support
 
 - backups
 - nssproxy (nslcd for Linux) and sudo
@@ -75,69 +79,60 @@ It should support
 
 shortly.
 
+Passwords (before startup) should also be removed soon.
+
+We expect using the image will change a lot, once choices are made
+to run in Docker Swarm or Kubernetes.
+
 ## What's Not Here
 
-This release only uses _slapd_ and _k5start_ daemons.
+This release only uses `slapd` and `k5start` daemons.
+Slapd is the OpenLDAP engine.
 K5start keeps Kerberos credentials fresh.
 
-Support for Kerberos admin daemons (krb5kdc and kadmind) is in another repo,
+Support for Kerberos admin daemons (`krb5kdc` and `kadmind`) is
 [here](https://github.com/awuersch/docker-krb5kdc).
+We could put admin daemons here, but a microservices ideal
+suggests that one shouldn't put too much function in one image.
 
-Putting admin daemons in the same container image is contrary to a container
-microservices ideal.
+We removed the examples and test directories in the original Osixia
+openldap repo. If we reintegrate to them, we'll add them back.
 
 ## Prerequisites
 
-SASL support is a bit surprising for now.
-It presumes a Kerberos config from a volume bound to _/etc/krb5_.
-It also presumes a Kerberos REALM *elsewhere*.
-The volume bound to _/etc/krb5_ should have a proper keytab.
+SASL support presumes a Docker volume bound to `/etc/krb5`.
+The volume should have a proper Kerberos keytab, relative to the SASL
+Kerberos realm used by the container.
+It should also have `kdc.conf` and `krb5.conf` configuration files.
+In the style of Osixia config files, these config files are templates,
+resolved by the image's `slapd/startup.sh` script.
 
 ## Security
 
-This repo does not yet deserve to be called "secure".
+This repo is not "secure" yet.
+
 It still has easy startup features,
 such as command-line overrides to environment variables,
-which more or less eviscerate security.
+which expose secrets in process and audit outputs.
 
-A proper invocation of this repo should update its default startup YAML file.
-The default YAML is filled with useful defaults.
+A good use of this image should update the startup YAML file.
 
-Unfortunately, I don't yet have a tool I like
-to read and easily generate an update to a default startup YAML file.
-I'm looking for one.
+Unfortunately, I don't yet have a tool I like to update a YAML file.
+Default startup YAML is filled with useful defaults. To create a good
+startup YAML file, the default should be read and updated.
 
-A security feature I'm looking to add is to remove passwords before startup.
-With SASL, this is largely done.
-A loose end is the Kerberos backend DNs.
-Their passwords can't be removed until I get SASL GSSAPI support working
-from a _kdc.conf_ file.
+SASL enables running LDAP without passwords.
+An issue is Kerberos backend DNs for _krb5kdc_ daemons.
+Their passwords can't be removed until I get SASL GSSAPI support
+working from a _kdc.conf_ file.
 
-Finally, I'm hoping to use only certificates generated from a private CA
-instead of permitting self-signed certificates for TLS.
+I'm hoping soon to use only certificates generated from a private
+CA, instead of self-signed certificates.
 
-- [Environment Variables](#environment-variables)
-	- [Default.yaml](#defaultyaml)
-	- [Default.startup.yaml](#defaultyamlstartup)
-	- [Set your own environment variables](#set-your-own-environment-variables)
-
-## Environment variables
-
-### Set your own environment variables
-
-#### Link environment file
-
-For example if your environment files **my-env.yaml** and **my-env.startup.yaml** are in /data/ldap/environment
-
-	docker run --volume /data/ldap/environment:/container/environment/01-custom \
-	--detach osixia/openldap:1.2.0
-
-Take care to link your environment files folder to `/container/environment/XX-somedir` (with XX < 99 so they will be processed before default environment files) and not  directly to `/container/environment` because this directory contains predefined baseimage environment files to fix container environment (INITRD, LANG, LANGUAGE and LC_CTYPE).
-
-Note: the container will try to delete the **\*.startup.yaml** file after the end of startup files so the file will also be deleted on the docker host. To prevent that : use --volume /data/ldap/environment:/container/environment/01-custom**:ro** or set all variables in **\*.yaml** file and don't use **\*.startup.yaml**:
-
-	docker run --volume /data/ldap/environment/my-env.yaml:/container/environment/01-custom/env.yaml \
-	--detach osixia/openldap:1.2.0
+The upshot of this section is that I hope to move away from the
+flexible many arguments of Osixia's framework, to a mode where
+arguments to the image are the result of preprocessing, and the
+resulting container is very likely to be secure.
 
 ## Changelog
 

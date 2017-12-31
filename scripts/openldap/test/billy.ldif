@@ -1,4 +1,4 @@
-dn: uid=billy,ou=people,dc=tony,dc=wuersch,dc=name
+dn: uid=billy,ou=people,ou=accounts,dc=tony,dc=wuersch,dc=name
 uid: billy
 cn: billy
 sn: 3
